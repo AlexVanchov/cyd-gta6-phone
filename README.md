@@ -21,7 +21,7 @@ Two builds exist because the CYD ships with two panels:
 
 | Build | Board |
 |---|---|
-| `ili9341` | Standard CYD. **The board connected during the build run is this one** (the same model as the vacuum remote, which runs an ILI9341 driver). |
+| `ili9341` | Standard CYD. **The board connected during the build run uses this build, with orientation preset 1** (§2). |
 | `st7789` | Some two-USB "CYD2USB" boards |
 
 ```bash
@@ -32,6 +32,13 @@ uvx --from platformio pio run -e ili9341 -t upload --upload-port /dev/cu.usbseri
 Use a micro-USB cable. The board's USB-C port has no CC resistors, so a C-to-C cable gives it no power. Uploads run at 115200 baud because the CH340 corrupts data at higher speeds behind a hub.
 
 ## 2. First boot: hardware test and touch calibration
+
+**Orientation.** CYD panels are not all wired the same way. The firmware has six orientation presets, stored in NVS and switched over USB serial without reflashing: `tools/.venv/bin/python tools/devserial.py cmd "ORIENT n"` (n = 0..5). Each switch clears the touch calibration and restarts. Hold the board upright (tall) and step through them:
+- 0/1: the controller is wired landscape. Preset 1 is the setting for the board used in the build run, the second CYD.
+- 2/3: standard portrait ILI9341.
+- 4/5: mirrored versions of 0 and 1.
+
+`RECAL` clears only the calibration.
 
 1. With no touch calibration stored, the board opens the **hardware test screen**. It shows five colour bars labelled RED, GREEN, BLUE, WHITE and YELLOW, a grey ramp, the SD status and live touch readings.
    - If a bar's colour doesn't match its label, flash the other build. If it is still wrong, use the hidden menu's *Invert colours* or *Swap red/blue* (saved in NVS).

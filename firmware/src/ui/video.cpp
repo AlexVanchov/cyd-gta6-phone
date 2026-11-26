@@ -140,10 +140,38 @@ static Clip* clipOf(lv_obj_t* img) {
     return nullptr;
 }
 
+// During a screen transition both pages are alive, so one ~65-96 KB block for
+// the frame is often not available yet. Retry until the old page is freed.
+static lv_timer_t* g_retry = nullptr;
+static lv_obj_t* g_retryImg = nullptr;
+static int g_retryLeft = 0;
+
+static void cancelRetry() {
+    if (g_retry) lv_timer_delete(g_retry);
+    g_retry = nullptr;
+    g_retryImg = nullptr;
+}
+
+static void retryTick(lv_timer_t*) {
+    lv_obj_t* img = g_retryImg;
+    bool valid = img && lv_obj_is_valid(img) && clipOf(img);
+    if (!valid || --g_retryLeft < 0) {
+        if (valid) platform().log("out of memory for video frame");
+        cancelRetry();
+        return;
+    }
+    if (transitionActive()) return;
+    lv_timer_delete(g_retry);
+    g_retry = nullptr;
+    videoPlay(img);  // g_retryImg still set: videoPlay keeps the remaining count
+}
+
 void videoPlay(lv_obj_t* img) {
     Clip* c = clipOf(img);
     if (!c) return;
+    bool retrying = g_retryImg == img;
     videoStopAll();
+    if (!retrying) g_retryLeft = 30;
     auto* p = new Player();
     p->img = img;
     p->loop = c->loop;
@@ -174,9 +202,14 @@ void videoPlay(lv_obj_t* img) {
     }
     p->fb = static_cast<uint8_t*>(lv_malloc(bytes));
     if (!p->fb) {
-        platform().log("out of memory for video frame");
         lv_fs_close(&p->file);
         delete p;
+        if (g_retryLeft > 0) {
+            g_retryImg = img;
+            g_retry = lv_timer_create(retryTick, 100, nullptr);
+        } else {
+            platform().log("out of memory for video frame");
+        }
         return;
     }
     std::memset(p->fb, 0, bytes);
@@ -193,6 +226,7 @@ void videoPlay(lv_obj_t* img) {
 }
 
 void videoStopAll() {
+    cancelRetry();
     Player* p = g_player;
     if (!p) return;
     g_player = nullptr;

@@ -94,3 +94,15 @@ Other decisions made during the run:
 4. **Calibrate touch:** tap anywhere, then tap the 5 crosses.
 5. The device boots into test pack B (inherits from A). Tap *Unlock*, open apps, swipe home pages, hold the top edge 3 s for the menu.
 6. **For game content:** follow CAPTURE_CHECKLIST.md, put the captures in reference/, then run the ingest (README §5) and copy the new pack to the card.
+
+## 7. After handover (2026-11-26, on the device)
+
+- **Mirrored, then sideways picture.** This board's controller is wired landscape (320×240 memory). The vacuum remote's board and LovyanGFX's CYD autodetect both assume portrait. Calibration taps showed the UI's x axis running along the long side and the rows wrapping after about 240. The firmware now has orientation presets (README §2). This board uses **preset 1** (MADCTL MV|MX|MY on a 320×240 memory), which the owner confirmed reads upright and fills the screen.
+- **Touch calibration** recorded one cross twice when the pressure dipped mid-press, which squashed the y axis. It now needs a 150 ms release between crosses, rejects a repeated spot, and repeats if any cross is off by more than 15 px. The owner's calibration has a worst error of 1.9 px.
+- **SD card**: at first the card did not answer at all (no reply to CMD0). Re-seating fixed it. The firmware now retries every 3 s and restarts when a card appears.
+- **Video**: opening a video screen right after a transition could fail with "out of memory for video frame", because both pages are alive during a transition. The frame allocation now retries after the old page is freed.
+- Verified on the device over serial (injected taps go through the same input path as touch):
+  - lock → Unlock → home; alpha → detail → back; beta video, with frames changing in the panel readback; gamma.
+  - Edge-swipe back, home, the 3 s status-bar hold opens the hidden menu.
+  - Reboot keeps the orientation and calibration.
+  - No heap leak over repeated navigation: home returns to 158 KB each time.

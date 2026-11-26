@@ -16,6 +16,10 @@ class Display : public lgfx::LGFX_Device {
 public:
     Display();
     void applyColourOptions(bool invert, bool swapRB);
+    // Orientation preset, applied before init(). 0..5, see kOrientations in
+    // display.cpp. Returns false for an unknown preset.
+    bool setOrientation(int preset);
+    int orientation() const { return orientation_; }
     uint32_t rawRead(uint8_t cmd);
 
 private:
@@ -25,7 +29,10 @@ private:
     lgfx::Panel_ILI9341 panel_;
 #endif
     lgfx::Bus_SPI bus_;
+    int orientation_ = 0;
 };
+
+constexpr int kOrientationCount = 6;
 
 Display& display();
 const char* panelName();

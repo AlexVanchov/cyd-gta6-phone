@@ -8,6 +8,7 @@
 // without touching the screen:
 //   INFO | SHOT | TAP x y | HOLD x y ms | SWIPE x1 y1 x2 y2 ms | SCREEN app/screen
 //   SNAP id | BACK | HOME | MENU | SKIP (leave test/calibration) | REBOOT
+//   ORIENT n (display orientation preset, clears calibration) | RECAL
 #include <Arduino.h>
 #include <Preferences.h>
 #include <SD.h>
@@ -76,8 +77,8 @@ bool injected(int16_t& x, int16_t& y, bool& down) {
 // ---------------------------------------------------------------- settings
 
 // "cal" was made on the first firmware's mirrored screen.
-// "cal3": the second firmware's calibration could record one cross twice.
-constexpr const char* kCalKey = "cal3";
+// "cal4": earlier keys were made with the wrong display orientation.
+constexpr const char* kCalKey = "cal4";
 
 void saveCal(const hal::TouchCal& c) {
     g_prefs.putBytes(kCalKey, &c, sizeof c);
@@ -486,6 +487,24 @@ void handleCommand(String cmd) {
         ui::openHiddenMenu();
     } else if (cmd == "SKIP") {
         g_skip = true;
+    } else if (cmd.startsWith("ORIENT ")) {
+        // ORIENT n: pick a display orientation preset (0..5), forget the touch
+        // calibration (it depends on the orientation) and restart.
+        int n = cmd.substring(7).toInt();
+        if (n < 0 || n >= hal::kOrientationCount) {
+            Serial.println("ERR orientation preset 0..5");
+        } else {
+            g_prefs.putInt("orient", n);
+            g_prefs.remove(kCalKey);
+            Serial.printf("OK orientation %d, calibration cleared, restarting\n", n);
+            delay(100);
+            ESP.restart();
+        }
+    } else if (cmd == "RECAL") {
+        g_prefs.remove(kCalKey);
+        Serial.println("OK calibration cleared, restarting");
+        delay(100);
+        ESP.restart();
     } else if (cmd == "REBOOT") {
         ESP.restart();
     } else {
@@ -518,6 +537,9 @@ void setup() {
     hal::lightBegin();
     g_prefs.begin("phone", false);
 
+    int orient = g_prefs.getInt("orient", 0);
+    if (!display().setOrientation(orient)) display().setOrientation(0);
+    Serial.printf("[boot] display orientation preset %d\n", display().orientation());
     display().init();
     display().setRotation(0);
     applyDisplayOptions();

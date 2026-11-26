@@ -56,6 +56,37 @@ Display::Display() {
     setPanel(&panel_);
 }
 
+// Panel orientation presets: controller memory size and LovyanGFX
+// offset_rotation (MADCTL). The UI is always 240x320 portrait.
+// 0: controller wired landscape (320x240), MADCTL MV. The board on the desk:
+//    touch data from calibration showed the UI's x axis along the long side
+//    and y wrapping after ~240 rows with presets 2/3.
+// 1: as 0, turned 180 degrees.
+// 2: standard portrait ILI9341, MADCTL MX (TFT_eSPI portrait, vacuum remote board).
+// 3: standard portrait ILI9341, MADCTL MX|MY (LovyanGFX CYD autodetect).
+// 4, 5: mirrored versions of 0 and 1 (for panels wired the other way).
+struct Orientation { int16_t w, h; uint8_t offset; };
+static constexpr Orientation kOrientations[kOrientationCount] = {
+    {320, 240, 5}, {320, 240, 7}, {240, 320, 6}, {240, 320, 2}, {320, 240, 1}, {320, 240, 3},
+};
+
+bool Display::setOrientation(int preset) {
+    if (preset < 0 || preset >= kOrientationCount) return false;
+#if defined(PANEL_ST7789)
+    (void)kOrientations;
+    return preset == 0;
+#else
+    const Orientation& o = kOrientations[preset];
+    auto cfg = panel_.config();
+    cfg.panel_width = cfg.memory_width = o.w;
+    cfg.panel_height = cfg.memory_height = o.h;
+    cfg.offset_rotation = o.offset;
+    panel_.config(cfg);
+    orientation_ = preset;
+    return true;
+#endif
+}
+
 void Display::applyColourOptions(bool invert, bool swapRB) {
     auto cfg = panel_.config();
 #if defined(PANEL_ST7789)
