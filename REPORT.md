@@ -106,3 +106,21 @@ Other decisions made during the run:
   - Edge-swipe back, home, the 3 s status-bar hold opens the hidden menu.
   - Reboot keeps the orientation and calibration.
   - No heap leak over repeated navigation: home returns to 158 KB each time.
+
+## 8. GatorPhone VI parody pack (2026-11-26, owner request)
+
+The owner asked for a parody phone "from" GTA VI instead of a capture-based clone. tools/make_parody_pack.py generates it: 16 original apps, about 100 screens, a VI Facts app with real sourced facts (research/parody.md), and only original names, jokes and procedurally generated pictures (parody/CREDITS.md). It is on the card as `2026-11-26_gatorphone`, which boots as the newest pack.
+
+On-device checks, all screens opened over serial:
+- No crashes or errors across all 103 screens.
+- The median screen opens in 0.27 s.
+- The steady-state free heap is at least 102 KB, and the low-water mark stays above 64 KB.
+- Real-tap flows work: unlock, the ride sequence, the food order, the call with voicemail, edge-swipe back and Home.
+
+Firmware changes made along the way:
+- **Out-of-memory crash:** building a screen while the old one was still in memory for its transition could run the heap dry. `show()` now estimates the cost from the screen's JSON size and, when memory is short, frees the old page first and skips the animation.
+- **Transition leak:** a page was leaked when navigating mid-transition. Fixed.
+- **Freed action:** a tapped button's action could be read after its page was freed. Actions are now stored as compact JSON and parsed on tap.
+- **Lighter text:** a text element is one LVGL label instead of a box plus a label, with vertical alignment done by computed padding. About 25% less RAM per screen.
+- **Read cache:** the SD file driver now has a 4 KB read cache, because LVGL reads images line by line.
+- **Serial file transfer:** PUT, CRC, RMTREE and BAUD commands, used by `tools/sync.py serial`, write packs over the USB cable without taking the card out.

@@ -99,7 +99,7 @@ int px(const BuildCtx& c, float unit) { return static_cast<int>(std::lround(unit
 
 struct ElemData {
     std::string id;
-    JsonDocument action;      // null if none
+    std::string action;       // compact JSON, empty if none (a JsonDocument per button costs ~0.5 KB)
     std::string src, pressedSrc;
     bool clockBound = false;
 };
@@ -225,7 +225,11 @@ static void onPressSwap(lv_event_t* ev) {
 static void onClick(lv_event_t* ev) {
     lv_obj_t* o = static_cast<lv_obj_t*>(lv_event_get_current_target(ev));
     auto* d = static_cast<ElemData*>(lv_obj_get_user_data(o));
-    if (d && !d->action.isNull()) runAction(d->action.as<JsonObjectConst>(), o);
+    if (!d || d->action.empty()) return;
+    // Parse into a local document: the action may replace the page and delete o (and d).
+    JsonDocument doc;
+    if (deserializeJson(doc, d->action)) return;
+    runAction(doc.as<JsonObjectConst>(), o);
 }
 
 static void makeInteractive(lv_obj_t* o, JsonObjectConst e, const BuildCtx& c, int wpx, int hpx) {
@@ -235,7 +239,7 @@ static void makeInteractive(lv_obj_t* o, JsonObjectConst e, const BuildCtx& c, i
     lv_obj_add_flag(o, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_remove_flag(o, LV_OBJ_FLAG_EVENT_BUBBLE);
     if (!action.isNull()) {
-        data(o)->action.set(action);
+        serializeJson(action, data(o)->action);
         lv_obj_add_event_cb(o, onClick, LV_EVENT_CLICKED, nullptr);
     }
     if (!pressed.isNull()) applyBoxStyle(o, pressed, c, LV_STATE_PRESSED);
@@ -264,24 +268,16 @@ static void buildChildren(JsonArrayConst kids, lv_obj_t* parent, const BuildCtx&
     for (JsonObjectConst k : kids) buildElement(k, parent, c, ox, oy);
 }
 
-static void onTextExtDraw(lv_event_t* ev) {
-    lv_obj_t* box = static_cast<lv_obj_t*>(lv_event_get_current_target(ev));
-    lv_obj_t* l = lv_obj_get_child(box, 0);
-    int32_t lh = l ? lv_font_get_line_height(lv_obj_get_style_text_font(l, 0)) : 0;
-    int32_t extra = l ? lv_obj_get_height(l) - lv_obj_get_height(box) : 0;
-    if (extra < lh) extra = lh;
-    lv_event_set_ext_draw_size(ev, extra);
-}
-
+// One label per text element (no wrapper box: LVGL objects cost ~0.3 KB each and
+// there is no PSRAM). Vertical alignment becomes top padding computed from the
+// measured text height.
 static lv_obj_t* buildText(JsonObjectConst e, lv_obj_t* parent, const BuildCtx& c, float ox, float oy) {
-    // A transparent box gives the label its captured position, size and vertical alignment.
-    lv_obj_t* box = lv_obj_create(parent);
-    bare(box);
-    int w, h;
-    place(box, e, c, ox, oy, w, h);
-    lv_obj_t* l = lv_label_create(box);
+    lv_obj_t* l = lv_label_create(parent);
     bare(l);
-    lv_obj_set_style_text_font(l, font(e["font"] | ""), 0);
+    int w, h;
+    place(l, e, c, ox, oy, w, h);
+    const lv_font_t* f = font(e["font"] | "");
+    lv_obj_set_style_text_font(l, f, 0);
     ParsedColor col = parseColor(e["color"]);
     if (col.ok) {
         lv_obj_set_style_text_color(l, col.color, 0);
@@ -291,30 +287,35 @@ static lv_obj_t* buildText(JsonObjectConst e, lv_obj_t* parent, const BuildCtx& 
     lv_obj_set_style_text_align(l, align == "center" ? LV_TEXT_ALIGN_CENTER
                                    : align == "right" ? LV_TEXT_ALIGN_RIGHT
                                                       : LV_TEXT_ALIGN_LEFT, 0);
-    if (e["line_space"].is<float>()) lv_obj_set_style_text_line_space(l, px(c, e["line_space"].as<float>()), 0);
-    if (e["letter_space"].is<float>()) lv_obj_set_style_text_letter_space(l, px(c, e["letter_space"].as<float>()), 0);
+    int32_t ls = 0, lts = 0;
+    if (e["line_space"].is<float>()) lv_obj_set_style_text_line_space(l, ls = px(c, e["line_space"].as<float>()), 0);
+    if (e["letter_space"].is<float>()) lv_obj_set_style_text_letter_space(l, lts = px(c, e["letter_space"].as<float>()), 0);
     std::string mode = e["mode"] | "wrap";
     lv_label_set_long_mode(l, mode == "clip" ? LV_LABEL_LONG_CLIP
                               : mode == "dots" ? LV_LABEL_LONG_DOT
                                                : LV_LABEL_LONG_WRAP);
-    if (w > 0) lv_obj_set_width(l, w);
-    if (mode != "wrap" && h > 0) lv_obj_set_height(l, h);
-    std::string valign = e["valign"] | "top";
-    lv_obj_align(l, valign == "center" ? LV_ALIGN_LEFT_MID : valign == "bottom" ? LV_ALIGN_BOTTOM_LEFT : LV_ALIGN_TOP_LEFT, 0, 0);
-    if (w < 0) lv_obj_set_width(box, LV_SIZE_CONTENT);
-    if (h < 0) lv_obj_set_height(box, LV_SIZE_CONTENT);
+    if (w < 0) lv_obj_set_width(l, LV_SIZE_CONTENT);
     if (e["clock_format"].is<const char*>()) bindClock(l, e["clock_format"].as<const char*>());
     else lv_label_set_text(l, e["text"] | "");
-    // Measured text boxes hug the ink; descenders and accents may extend past
-    // them. Let wrapped text draw up to one line height outside its box.
-    if (mode == "wrap" && h > 0) {
-        lv_obj_add_flag(box, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
-        lv_obj_add_event_cb(box, onTextExtDraw, LV_EVENT_REFR_EXT_DRAW_SIZE, nullptr);
-        lv_obj_refresh_ext_draw_size(box);
+    // Wrapped text without a background or action may grow past its measured
+    // box (descenders, a slightly different wrap): size it to its content.
+    bool boxed = !e["bg"].isNull() || !e["bg_grad"].isNull() || !e["action"].isNull() || !e["border_w"].isNull();
+    if (h < 0 || (mode == "wrap" && !boxed)) lv_obj_set_height(l, LV_SIZE_CONTENT);
+    std::string valign = e["valign"] | "top";
+    if (h > 0 && valign != "top") {
+        lv_point_t sz;
+        lv_text_get_size(&sz, lv_label_get_text(l), f, lts, ls, w > 0 ? w : LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+        int32_t lh = lv_font_get_line_height(f);
+        if (mode != "wrap" && sz.y > lh) sz.y = lh;  // clipped/dotted text shows one line
+        int32_t pad = valign == "center" ? (h - sz.y) / 2 : h - sz.y;
+        if (pad > 0) {
+            lv_obj_set_style_pad_top(l, pad, 0);
+            if (lv_obj_get_style_height(l, 0) != LV_SIZE_CONTENT) lv_obj_set_height(l, h);
+        }
     }
-    applyBoxStyle(box, e, c, 0);
-    makeInteractive(box, e, c, w, h);
-    return box;
+    applyBoxStyle(l, e, c, 0);
+    makeInteractive(l, e, c, w, h);
+    return l;
 }
 
 static lv_obj_t* buildImage(JsonObjectConst e, lv_obj_t* parent, const BuildCtx& c, float ox, float oy) {

@@ -95,6 +95,13 @@ std::string Pack::resolveFile(const std::string& rel) const {
     return "";
 }
 
+size_t Pack::screenBytes(const std::string& screenId) const {
+    auto slash = screenId.find('/');
+    if (slash == std::string::npos) return 0;
+    std::string dir = appDir(screenId.substr(0, slash));
+    return dir.empty() ? 0 : platform().fileSize(dir + "/screens/" + screenId.substr(slash + 1) + ".json");
+}
+
 bool Pack::loadScreen(const std::string& screenId, JsonDocument& doc, std::string& dir,
                       std::string& err) const {
     auto slash = screenId.find('/');

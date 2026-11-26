@@ -30,6 +30,8 @@ public:
     std::string resolveFile(const std::string& rel) const;
 
     // Load "<app>/<screen>" into doc. appDir receives the directory assets are relative to.
+    // Size of a screen's JSON file in bytes (0 if unknown), for memory estimates.
+    size_t screenBytes(const std::string& screenId) const;
     bool loadScreen(const std::string& screenId, JsonDocument& doc, std::string& appDir,
                     std::string& err) const;
 

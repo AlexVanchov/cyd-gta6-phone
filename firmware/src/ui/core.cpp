@@ -193,14 +193,26 @@ void transStep(void* var, int32_t v) {
     else if (ty == "uncover_right" && t->out) lv_obj_set_x(t->out, lerp(0, W, v));
 }
 
-void transDone(lv_anim_t* a) {
-    auto* t = static_cast<TransAnim*>(lv_anim_get_user_data(a));
+TransAnim* g_trans = nullptr;  // the running transition, if any
+
+void endTransition(TransAnim* t) {
     if (t->out) lv_obj_delete(t->out);
     lv_obj_set_pos(t->in, 0, 0);
     lv_obj_set_style_opa(t->in, LV_OPA_COVER, 0);
     S().outgoing = nullptr;
     S().transition = false;
+    if (g_trans == t) g_trans = nullptr;
     delete t;
+}
+
+void transDone(lv_anim_t* a) { endTransition(static_cast<TransAnim*>(lv_anim_get_user_data(a))); }
+
+// Jump a running transition to its end state (frees the outgoing page).
+void finishTransition() {
+    TransAnim* t = g_trans;
+    if (!t) return;
+    lv_anim_delete(t, nullptr);
+    endTransition(t);
 }
 
 void startTransition(lv_obj_t* in, lv_obj_t* out, JsonObjectConst spec) {
@@ -225,6 +237,7 @@ void startTransition(lv_obj_t* in, lv_obj_t* out, JsonObjectConst spec) {
     }
     s.transition = true;
     s.outgoing = out;
+    g_trans = t;
     transStep(t, 0);
     lv_anim_t a;
     lv_anim_init(&a);
@@ -271,9 +284,24 @@ lv_obj_t* findBody(lv_obj_t* page) {
 }
 
 // Builds screenId into a fresh page and makes it current, with the transition for kind.
+constexpr size_t kBytesPerJsonByte = 5;
+constexpr size_t kHeapReserve = 36 * 1024;
+
 bool show(const std::string& screenId, NavKind kind, JsonObjectConst override, int restoreScroll) {
     State& s = S();
     detail::videoStopAll();
+    finishTransition();
+    // Building a page while the old one is still alive (for the transition) can
+    // run the heap dry without PSRAM. When memory is short, free the old page
+    // first and show the new one without animation.
+    // Rough cost of building a screen: JSON text + parsed document + objects.
+    size_t need = s.pack.screenBytes(screenId) * kBytesPerJsonByte + kHeapReserve;
+    bool lowMem = s.page && platform().freeHeap() < need;
+    if (lowMem) {
+        lv_obj_delete(s.page);
+        s.page = nullptr;
+        platform().log("low memory: transition skipped");
+    }
     lv_obj_t* page = newPage();
     std::string err;
     int sb = 0;
@@ -289,10 +317,6 @@ bool show(const std::string& screenId, NavKind kind, JsonObjectConst override, i
         }
     }
     lv_obj_t* old = s.page;
-    if (s.outgoing) {  // a previous transition is still running: finish it now
-        lv_anim_delete_all();
-        s.transition = false;
-    }
     s.page = page;
     s.statusBarPx = sb;
     JsonObjectConst spec = override.isNull() ? s.pack.manifest()["transitions"][kindName(kind)].as<JsonObjectConst>() : override;

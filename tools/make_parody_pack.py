@@ -267,15 +267,15 @@ def finish(img, size):
     return img.resize(size, Image.LANCZOS)
 
 
-def scene_sunset(w, h, seed=0, phase=0.0, palms=True):
+def scene_sunset(w, h, seed=0, phase=0.0, palms=True, hz_frac=0.62, r_frac=0.30):
     rnd = random.Random(seed)
     W2, H2 = w * SS, h * SS
     img = Image.new("RGB", (W2, H2))
     d = ImageDraw.Draw(img)
-    hz = int(H2 * 0.62)
+    hz = int(H2 * hz_frac)
     vgrad(d, (0, 0, W2, hz), (32, 10, 70), (255, 92, 122))
     # sun with stripes
-    r = int(min(W2, H2) * 0.30)
+    r = int(min(W2, H2) * r_frac)
     cx, cy = W2 // 2, hz - int(r * 0.25)
     sun = Image.new("RGB", (2 * r, 2 * r))
     vgrad(ImageDraw.Draw(sun), (0, 0, 2 * r, 2 * r), (255, 214, 70), (255, 61, 139))
@@ -472,7 +472,7 @@ def status_bar():
     return {"schema": 1, "id": "status_bar", "height": SB, "elements": sb_elements()}
 
 
-def wallpaper(dim=False):
+def wallpaper(dim=False, palms=True):
     """Retro sunset built from LVGL shapes (no image reads, fast to redraw)."""
     hz = 200
     sky = [(20, 10, 46), (91, 31, 114), (240, 89, 122)]
@@ -493,8 +493,9 @@ def wallpaper(dim=False):
     for k in range(9):
         half = int(46 * (1 - k / 11))
         els.append(R(120 - half, hz + 6 + k * 12, 2 * half, 2, bg="#FF6E8C", opa=200 - k * 18))
-    els.append(IMG(-8, 92, 96, 228, "assets/palm_l.bin"))
-    els.append(IMG(160, 120, 88, 200, "assets/palm_r.bin"))
+    if palms:  # images with alpha are read line by line from the card: keep them off busy screens
+        els.append(IMG(-8, 92, 96, 228, "assets/palm_l.bin"))
+        els.append(IMG(160, 120, 88, 200, "assets/palm_r.bin"))
     if dim:
         els.append(R(0, 0, W, H, bg="#0E0B1680"))
     return els
@@ -536,7 +537,9 @@ def icon(app, x, y, label=True, size=44):
 
 
 def lock():
-    els = wallpaper() + sb_elements(carrier=True)
+    # One opaque picture (sky, sun, sea, palms): read sequentially from the card,
+    # unlike shapes plus alpha palms, which made redraws slow.
+    els = sb_elements(carrier=True)
     els.append(T(0, 22, W, 16, G["lock"], "t14", "#FFFFFFCC", align="center"))
     els.append(CLK(0, 34, W, 80, "%H:%M", "clock", sample="18:30"))
     els.append(CLK(0, 112, W, 20, "%A, %B %e", "b14", sample="Thursday, November 19"))
@@ -553,14 +556,15 @@ def lock():
         ])
     els.append(notif(170, "txtz", "Mom", "The alligator is back in the pool.", "txtz/mom"))
     els.append(notif(222, "clout", "Clout", "@FloridaManDaily: pelicans have lawyers now", "clout/main"))
-    els.append(R(64, 284, 112, 26, bg="#FFFFFF2E", radius=13, action=go("_system/home", {"type": "fade_in", "ms": 250}),
+    els.append(R(64, 284, 112, 26, bg="#FFFFFF2E", radius=13, action=go("_system/home", {"type": "none", "ms": 0}),
                  pressed={"bg": "#FFFFFF55"},
                  children=[T(64, 284, 112, 26, "Tap to unlock", "b12", "$color.fg", align="center", valign="center")]))
-    return {"schema": 1, "id": "lock", "height": H, "status_bar": False, "top_h": 0, "bg": "$color.bg", "elements": els}
+    return {"schema": 1, "id": "lock", "height": H, "status_bar": False, "top_h": 0, "bg": "$color.bg",
+            "bg_image": "assets/lock_wall.bin", "elements": els}
 
 
 def home():
-    els = wallpaper(dim=True) + sb_elements()
+    els = wallpaper(dim=True, palms=False) + sb_elements()
     grid = ["news", "facts", "humid", "hailr", "grub", "moola", "condos", "sweat", "radio", "maps", "wanted", "settings"]
     page1 = []
     for i, a in enumerate(grid):
@@ -1546,8 +1550,7 @@ SCENES = {"sunset": lambda w, h: scene_sunset(w, h, 7), "beach": scene_beach, "s
 
 def build_assets(p: Path):
     sysa = p / "apps/_system/assets"
-    save_img(sysa / "palm_l.bin", palm_sprite(96, 228, 0.22))
-    save_img(sysa / "palm_r.bin", palm_sprite(88, 200, -0.26))
+    save_img(sysa / "lock_wall.bin", scene_sunset(240, 320, 3, hz_frac=0.74, r_frac=0.24))
     for k in ("flamingo", "swamp", "condo", "sunset"):
         save_img(p / f"apps/clout/assets/post_{k}.bin", SCENES[k](240, 135))
     frames = [scene_sunset(240, 135, 11, phase=i / 24) for i in range(24)]
@@ -1570,7 +1573,7 @@ def build(out: Path) -> Path:
     p = out / PACK
     if p.exists():
         shutil.rmtree(p)
-    S = lambda app, name, doc: write_json(p / f"apps/{app}/screens/{name}.json", doc)
+    S = lambda app, name, doc: write_json(p / f"apps/{app}/screens/{name}.json", doc, compact=True)
     S("_system", "status_bar", status_bar())
     S("_system", "lock", lock())
     S("_system", "home", home())

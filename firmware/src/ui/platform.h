@@ -45,6 +45,9 @@ public:
     virtual std::string deviceInfo() { return ""; }
 
     virtual void log(const std::string& msg) = 0;
+    // Free heap in bytes (the simulator has no limit).
+    virtual size_t freeHeap() { return static_cast<size_t>(-1); }
+    virtual size_t fileSize(const std::string& path) { (void)path; return 0; }
 };
 
 void setPlatform(Platform* p);

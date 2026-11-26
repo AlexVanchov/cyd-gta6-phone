@@ -295,6 +295,13 @@ void calibrate() {
 class DevicePlatform : public ui::Platform {
 public:
     std::string lvRoot() const override { return "S:"; }
+    size_t freeHeap() override { return heap_caps_get_free_size(MALLOC_CAP_8BIT); }
+    size_t fileSize(const std::string& path) override {
+        File f = SD.open(path.c_str());
+        size_t n = f && !f.isDirectory() ? f.size() : 0;
+        if (f) f.close();
+        return n;
+    }
     bool readFile(const std::string& path, std::string& out) override {
         File f = SD.open(path.c_str());
         if (!f || f.isDirectory()) return false;
@@ -699,6 +706,9 @@ void setup() {
     }
 
     lv_init();
+    // LVGL reads images from the card one line per call; a read cache turns
+    // that into a few block reads per image (the Arduino SD driver has none).
+    if (lv_fs_drv_t* fs = lv_fs_get_drv('S')) fs->cache_size = 4096;
     lv_tick_set_cb(tickCb);
     lv_log_register_print_cb(lvglLog);
     lv_display_t* disp = lv_display_create(240, 320);

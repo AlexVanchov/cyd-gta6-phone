@@ -31,10 +31,12 @@ def read_json(p: Path):
     return json.loads(Path(p).read_text(encoding="utf-8"))
 
 
-def write_json(p: Path, data) -> None:
+def write_json(p: Path, data, compact: bool = False) -> None:
+    """compact=True writes minified JSON (screens: less to read and parse on the device)."""
     p = Path(p)
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    text = json.dumps(data, separators=(",", ":"), ensure_ascii=False) if compact else json.dumps(data, indent=2, ensure_ascii=False)
+    p.write_text(text + "\n", encoding="utf-8")
 
 
 def scale_for(unit_width: float) -> float:
