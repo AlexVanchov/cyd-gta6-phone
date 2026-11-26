@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "manifest.schema.json",
+  "title": "Content pack manifest (sd/packs/<snapshot-id>/manifest.json)",
+  "type": "object",
+  "required": ["schema", "id"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": 1},
+    "id": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}_[A-Za-z0-9._-]+$"},
+    "parent": {"type": ["string", "null"], "description": "Snapshot this one inherits uncaptured apps, fonts and tokens from."},
+    "label": {"type": "string"},
+    "notes": {"type": "string", "description": "Copied from reference/<snapshot>/notes.md"},
+    "unit_width": {"type": "number", "exclusiveMinimum": 0, "description": "Canonical capture width; scale = 240 / unit_width."},
+    "apps": {
+      "type": "array",
+      "description": "Apps in home-screen order.",
+      "items": {
+        "type": "object",
+        "required": ["id"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"},
+          "entry": {"type": "string"}
+        }
+      }
+    },
+    "system": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "boot": {"$ref": "#/$defs/screenRef"},
+        "home": {"$ref": "#/$defs/screenRef"},
+        "status_bar": {"$ref": "#/$defs/screenRef"}
+      }
+    },
+    "theme": {
+      "type": "object",
+      "description": "Theme tokens measured from the captures (colour, space, radius, size, ...). Referenced as \"$group.name\".",
+      "additionalProperties": {"type": "object"}
+    },
+    "fonts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["file"],
+        "additionalProperties": false,
+        "properties": {
+          "file": {"type": "string", "pattern": "^fonts/[^/]+\\.bin$"},
+          "fallback": {"type": "string"},
+          "source": {"type": "string", "description": "Typeface and size this was generated from"}
+        }
+      }
+    },
+    "clock": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "start": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2})?$"},
+        "rate": {"type": "number", "exclusiveMinimum": 0, "description": "Game seconds per real second, measured from the clock video."},
+        "names": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "weekday": {"type": "array", "items": {"type": "string"}, "maxItems": 7},
+            "weekday_short": {"type": "array", "items": {"type": "string"}, "maxItems": 7},
+            "month": {"type": "array", "items": {"type": "string"}, "maxItems": 12},
+            "month_short": {"type": "array", "items": {"type": "string"}, "maxItems": 12},
+            "am": {"type": "string"},
+            "pm": {"type": "string"}
+          }
+        }
+      }
+    },
+    "transitions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "open_app": {"$ref": "#/$defs/transition"},
+        "close_app": {"$ref": "#/$defs/transition"},
+        "push": {"$ref": "#/$defs/transition"},
+        "pop": {"$ref": "#/$defs/transition"}
+      }
+    }
+  },
+  "$defs": {
+    "screenRef": {"type": "string", "pattern": "^[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+$"},
+    "transition": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {"enum": ["none", "fade_in", "fade_out", "slide_left", "slide_right", "slide_up", "slide_down",
+                          "cover_up", "cover_left", "uncover_down", "uncover_right"]},
+        "ms": {"type": "integer", "minimum": 0, "maximum": 5000},
+        "bezier": {"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4},
+        "source": {"type": "string", "description": "Reference video this was measured from"}
+      }
+    }
+  }
+}
