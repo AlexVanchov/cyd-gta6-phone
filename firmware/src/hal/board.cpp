@@ -8,17 +8,22 @@ namespace hal {
 static SPIClass g_sdSpi(VSPI);
 static bool g_sdOk = false;
 
+bool sdBeginOnce(uint32_t hz) {
+    if (SD.begin(5, g_sdSpi, hz, "/sd", 8)) {
+        g_sdOk = SD.cardType() != CARD_NONE;
+        if (g_sdOk) return true;
+        SD.end();
+    }
+    return false;
+}
+
 bool sdBegin() {
+    pinMode(19, INPUT_PULLUP);  // MISO idles high; some cards need the pull-up to answer CMD0
     g_sdSpi.begin(18, 19, 23, 5);
     // Try a fast clock first, fall back for slow or long-wired cards.
     const uint32_t speeds[] = {25000000, 16000000, 4000000};
-    for (uint32_t hz : speeds) {
-        if (SD.begin(5, g_sdSpi, hz, "/sd", 8)) {
-            g_sdOk = SD.cardType() != CARD_NONE;
-            if (g_sdOk) return true;
-            SD.end();
-        }
-    }
+    for (uint32_t hz : speeds)
+        if (sdBeginOnce(hz)) return true;
     return false;
 }
 

@@ -6,6 +6,7 @@ namespace hal {
 
 // SD card on VSPI: MOSI 23, MISO 19, SCK 18, CS 5.
 bool sdBegin();
+bool sdBeginOnce(uint32_t hz);
 bool sdMounted();
 uint64_t sdTotalBytes();
 uint64_t sdUsedBytes();

@@ -73,13 +73,17 @@ bool injected(int16_t& x, int16_t& y, bool& down) {
 
 // ---------------------------------------------------------------- settings
 
+// "cal2": calibrations stored under "cal" were made on the mirrored screen of
+// the first firmware and no longer match.
+constexpr const char* kCalKey = "cal2";
+
 void saveCal(const hal::TouchCal& c) {
-    g_prefs.putBytes("cal", &c, sizeof c);
+    g_prefs.putBytes(kCalKey, &c, sizeof c);
 }
 
 bool loadCal(hal::TouchCal& c) {
-    if (!g_prefs.isKey("cal") || g_prefs.getBytesLength("cal") != sizeof c) return false;
-    g_prefs.getBytes("cal", &c, sizeof c);
+    if (!g_prefs.isKey(kCalKey) || g_prefs.getBytesLength(kCalKey) != sizeof c) return false;
+    g_prefs.getBytes(kCalKey, &c, sizeof c);
     return c.valid;
 }
 
@@ -491,7 +495,21 @@ void setup() {
     Serial.printf("[boot] ui ready in %lu ms, heap %u KB free\n", millis(), ESP.getFreeHeap() / 1024);
 }
 
+// Card not found at boot: keep looking, and restart once it answers, so
+// re-seating the card is enough.
+void sdRetry() {
+    static uint32_t next = 5000;
+    if (hal::sdMounted() || millis() < next) return;
+    next = millis() + 3000;
+    if (hal::sdBeginOnce(4000000)) {
+        Serial.println("[sd] card found, restarting");
+        delay(100);
+        ESP.restart();
+    }
+}
+
 void loop() {
+    sdRetry();
     lv_timer_handler();
     ui::loop();
     svc::net().loop();

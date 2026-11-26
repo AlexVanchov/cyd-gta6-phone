@@ -33,7 +33,11 @@ Display::Display() {
 #if defined(PANEL_ST7789)
         cfg.offset_rotation = 0;
 #else
-        cfg.offset_rotation = 2;  // the CYD's ILI9341 is mounted rotated (LovyanGFX board autodetect)
+        // Internal rotation 6 = MADCTL MX (+BGR): the same register value TFT_eSPI's
+        // ILI9341(_2) driver writes for portrait rotation 0, which is what the
+        // owner's identical working CYD uses. LovyanGFX's autodetect value (2 =
+        // MX|MY) showed a mirrored image on this board.
+        cfg.offset_rotation = 6;
 #endif
         cfg.dummy_read_pixel = 8;
         cfg.dummy_read_bits = 1;

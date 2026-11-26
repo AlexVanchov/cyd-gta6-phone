@@ -433,7 +433,7 @@ void begin(lv_display_t* disp) {
     std::string pickedNewest = platform().getSetting("snapshot_newest", "");
     std::string id = (!picked.empty() && pickedNewest == newest && platform().isFile(svc::Pack::packDir(picked) + "/manifest.json")) ? picked : newest;
     if (id.empty()) {
-        detail::showMessage("No content pack on the SD card.\n\nCopy sd/packs/<snapshot> to the card.\nHold the top edge for 3 s for the menu.");
+        detail::showMessage("No content pack found.\n\nIf the SD card is in, push it in until it\nsits flush: the phone restarts by itself\nwhen it finds the card.\n\nHold the top edge for 3 s for the menu.");
         return;
     }
     if (!switchSnapshot(id, false)) {
