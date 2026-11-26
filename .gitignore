@@ -1,0 +1,14 @@
+# Game assets stay local (PLAN.md rule 7)
+reference/
+content/
+sd/
+# Build output
+firmware/.pio/
+simulator/build/
+simulator/out/
+tools/.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+backup/
+.DS_Store
