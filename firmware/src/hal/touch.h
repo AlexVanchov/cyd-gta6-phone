@@ -28,6 +28,11 @@ public:
 private:
     uint16_t xfer(uint8_t cmd);
     TouchCal cal_;
+    // Resistive pressure dips for a read or two during a press; hold the last
+    // point until several consecutive reads miss.
+    bool down_ = false;
+    uint8_t misses_ = 0;
+    int16_t lastX_ = 0, lastY_ = 0;
 };
 
 Touch& touch();

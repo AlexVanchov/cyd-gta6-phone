@@ -14,6 +14,8 @@
 #include <esp_heap_caps.h>
 #include <lvgl.h>
 
+#include <algorithm>
+#include <cmath>
 #include <deque>
 
 #include "hal/board.h"
@@ -73,9 +75,9 @@ bool injected(int16_t& x, int16_t& y, bool& down) {
 
 // ---------------------------------------------------------------- settings
 
-// "cal2": calibrations stored under "cal" were made on the mirrored screen of
-// the first firmware and no longer match.
-constexpr const char* kCalKey = "cal2";
+// "cal" was made on the first firmware's mirrored screen.
+// "cal3": the second firmware's calibration could record one cross twice.
+constexpr const char* kCalKey = "cal3";
 
 void saveCal(const hal::TouchCal& c) {
     g_prefs.putBytes(kCalKey, &c, sizeof c);
@@ -93,10 +95,14 @@ void applyDisplayOptions() {
 
 // ---------------------------------------------------------------- system screens (LovyanGFX, not LVGL)
 
+// Released = no press for 150 ms in a row (pressure dips mid-press don't count).
 void waitRelease() {
     uint16_t x, y, z;
-    while (touch().readRaw(x, y, z)) delay(10);
-    delay(60);
+    uint32_t since = millis();
+    while (millis() - since < 150) {
+        if (touch().readRaw(x, y, z)) since = millis();
+        delay(10);
+    }
 }
 
 void drawTestScreen() {
@@ -185,60 +191,100 @@ void drawCross(int x, int y, uint16_t c) {
     d.drawCircle(x, y, 4, c);
 }
 
+// Collect one steady press: median of up to 64 raw samples while held.
+static bool collectPress(float& outX, float& outY) {
+    while (!g_skip) {
+        uint16_t x, y, z;
+        if (touch().readRaw(x, y, z)) {
+            delay(40);
+            uint16_t xs[64], ys[64];
+            int n = 0, miss = 0;
+            while (n < 64 && miss < 3) {
+                if (touch().readRaw(x, y, z)) {
+                    xs[n] = x;
+                    ys[n] = y;
+                    ++n;
+                    miss = 0;
+                } else {
+                    ++miss;
+                }
+                delay(8);
+            }
+            if (n >= 8) {
+                std::sort(xs, xs + n);
+                std::sort(ys, ys + n);
+                outX = xs[n / 2];
+                outY = ys[n / 2];
+                return true;
+            }
+        }
+        serialPoll();
+        delay(10);
+    }
+    return false;
+}
+
 void calibrate() {
     auto& d = display();
     const int tx[5] = {20, 220, 220, 20, 120};
     const int ty[5] = {20, 20, 300, 300, 160};
-    float rx[5], ry[5], sx[5], sy[5];
     g_skip = false;
-    for (int i = 0; i < 5 && !g_skip; ++i) {
-        d.fillScreen(TFT_BLACK);
-        d.setTextColor(TFT_WHITE, TFT_BLACK);
-        d.setFont(&fonts::Font2);
-        d.setTextDatum(middle_center);
-        d.drawString("Touch calibration", 120, 120);
-        d.drawString(String("Tap the cross (") + (i + 1) + "/5)", 120, 140);
-        d.setTextDatum(top_left);
-        drawCross(tx[i], ty[i], TFT_YELLOW);
-        // Collect a steady press.
-        uint32_t sumX = 0, sumY = 0, n = 0;
-        while (!g_skip) {
-            uint16_t x, y, z;
-            if (touch().readRaw(x, y, z)) {
-                delay(40);
-                while (touch().readRaw(x, y, z) && n < 64) {
-                    sumX += x;
-                    sumY += y;
-                    ++n;
-                    delay(8);
-                }
-                if (n >= 8) break;
-                sumX = sumY = n = 0;
-            }
-            serialPoll();
-            delay(10);
-        }
-        if (g_skip) break;
-        rx[i] = static_cast<float>(sumX) / n;
-        ry[i] = static_cast<float>(sumY) / n;
-        sx[i] = tx[i];
-        sy[i] = ty[i];
-        drawCross(tx[i], ty[i], TFT_GREEN);
+    for (int attempt = 1; !g_skip; ++attempt) {
+        float rx[5], ry[5], sx[5], sy[5];
         waitRelease();
+        for (int i = 0; i < 5 && !g_skip;) {
+            d.fillScreen(TFT_BLACK);
+            d.setTextColor(TFT_WHITE, TFT_BLACK);
+            d.setFont(&fonts::Font2);
+            d.setTextDatum(middle_center);
+            d.drawString("Hold the board upright (tall)", 120, 110);
+            d.drawString(String("Tap the cross (") + (i + 1) + "/5)", 120, 130);
+            if (attempt > 1) d.drawString("Again: the last try didn't line up", 120, 190);
+            d.setTextDatum(top_left);
+            drawCross(tx[i], ty[i], TFT_YELLOW);
+            float x, y;
+            if (!collectPress(x, y)) break;
+            // A tap where the previous cross was is a leftover press, not this cross.
+            if (i > 0 && std::fabs(x - rx[i - 1]) + std::fabs(y - ry[i - 1]) < 300) {
+                waitRelease();
+                continue;
+            }
+            rx[i] = x;
+            ry[i] = y;
+            sx[i] = tx[i];
+            sy[i] = ty[i];
+            drawCross(tx[i], ty[i], TFT_GREEN);
+            Serial.printf("calibration point %d: screen %d,%d raw %.0f,%.0f\n", i + 1, tx[i], ty[i], x, y);
+            waitRelease();
+            ++i;
+        }
+        if (g_skip) return;
+        hal::TouchCal c = hal::Touch::fit(rx, ry, sx, sy, 5);
+        float worst = 1e9f;
+        if (c.valid) {
+            worst = 0;
+            for (int i = 0; i < 5; ++i) {
+                float ex = c.ax * rx[i] + c.bx * ry[i] + c.cx - sx[i];
+                float ey = c.ay * rx[i] + c.by * ry[i] + c.cy - sy[i];
+                worst = std::max(worst, std::sqrt(ex * ex + ey * ey));
+            }
+        }
+        Serial.printf("calibration attempt %d: worst error %.1f px  x=%.4f*rx%+.4f*ry%+.1f  y=%.4f*rx%+.4f*ry%+.1f\n", attempt,
+                      worst, c.ax, c.bx, c.cx, c.ay, c.by, c.cy);
+        d.fillScreen(TFT_BLACK);
+        d.setTextDatum(middle_center);
+        if (c.valid && worst <= 15) {
+            touch().setCalibration(c);
+            saveCal(c);
+            d.drawString("Calibration saved", 120, 160);
+            d.setTextDatum(top_left);
+            delay(700);
+            return;
+        }
+        d.drawString("Didn't line up, once more", 120, 160);
+        d.setTextDatum(top_left);
+        delay(1200);
     }
-    if (g_skip) return;
-    hal::TouchCal c = hal::Touch::fit(rx, ry, sx, sy, 5);
-    if (c.valid) {
-        touch().setCalibration(c);
-        saveCal(c);
-    }
-    d.fillScreen(TFT_BLACK);
-    d.setTextDatum(middle_center);
-    d.drawString(c.valid ? "Calibration saved" : "Calibration failed", 120, 160);
-    d.setTextDatum(top_left);
-    Serial.printf("calibration %s: x=%.4f*rx%+.4f*ry%+.1f  y=%.4f*rx%+.4f*ry%+.1f\n", c.valid ? "saved" : "failed",
-                  c.ax, c.bx, c.cx, c.ay, c.by, c.cy);
-    delay(700);
 }
 
 // ---------------------------------------------------------------- platform
@@ -293,7 +339,22 @@ public:
     bool readPointer(int16_t& x, int16_t& y) override {
         bool down;
         if (injected(x, y, down)) return down;
-        return touch().read(x, y);
+        down = touch().read(x, y);
+        // Log press/release edges so touch problems can be diagnosed over serial.
+        static bool was = false;
+        static uint32_t lastLog = 0;
+        if (down != was || (down && millis() - lastLog > 250)) {
+            lastLog = millis();
+            if (down) {
+                uint16_t rx, ry, rz;
+                touch().readRaw(rx, ry, rz);
+                Serial.printf("[touch] %s x=%d y=%d raw=%u,%u z=%u\n", was ? "move" : "down", x, y, rx, ry, rz);
+            } else {
+                Serial.println("[touch] up");
+            }
+        }
+        was = down;
+        return down;
     }
     void setBacklight(uint8_t level) override { hal::setBacklight(level); }
     uint8_t autoBrightness() override {
@@ -475,6 +536,9 @@ void setup() {
     hal::TouchCal cal;
     bool haveCal = loadCal(cal);
     if (haveCal) touch().setCalibration(cal);
+    if (haveCal)
+        Serial.printf("[boot] touch cal x=%.4f*rx%+.4f*ry%+.1f  y=%.4f*rx%+.4f*ry%+.1f\n", cal.ax, cal.bx, cal.cx, cal.ay, cal.by,
+                      cal.cy);
     if (!haveCal || digitalRead(kPinBoot) == LOW) {
         Serial.println("[boot] hardware test + calibration (send SKIP to leave)");
         hardwareTest();

@@ -65,11 +65,22 @@ bool Touch::readRaw(uint16_t& x, uint16_t& y, uint16_t& z) {
 
 bool Touch::read(int16_t& x, int16_t& y) {
     uint16_t rx, ry, rz;
-    if (!readRaw(rx, ry, rz) || !cal_.valid) return false;
+    if (!cal_.valid) return false;
+    if (!readRaw(rx, ry, rz)) {
+        if (down_ && ++misses_ < 3) {
+            x = lastX_;
+            y = lastY_;
+            return true;
+        }
+        down_ = false;
+        return false;
+    }
     float fx = cal_.ax * rx + cal_.bx * ry + cal_.cx;
     float fy = cal_.ay * rx + cal_.by * ry + cal_.cy;
-    x = static_cast<int16_t>(std::min(239.0f, std::max(0.0f, fx)));
-    y = static_cast<int16_t>(std::min(319.0f, std::max(0.0f, fy)));
+    x = lastX_ = static_cast<int16_t>(std::min(239.0f, std::max(0.0f, fx)));
+    y = lastY_ = static_cast<int16_t>(std::min(319.0f, std::max(0.0f, fy)));
+    down_ = true;
+    misses_ = 0;
     return true;
 }
 
