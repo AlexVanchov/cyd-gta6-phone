@@ -100,6 +100,19 @@ Then, for each capture session (see CAPTURE_CHECKLIST.md):
 
 To capture only the apps that changed, give the new manifest `"parent": "<previous-id>"`. Apps you didn't re-capture are inherited.
 
+## 5b. GatorPhone VI (the parody pack on the card)
+
+The card currently runs **GatorPhone VI**, an original parody phone "from" the world of GTA VI: a fictional Florida-ish town (Port Sunburn), 16 apps with their own jokes, and a **VI Facts** app with real, sourced facts about the game (research/parody.md). It contains no game assets: every name, joke and picture is original, and the pictures are generated in code. Credits and licences are in parody/CREDITS.md.
+
+```bash
+tools/.venv/bin/python tools/make_parody_pack.py              # -> sd/packs/2026-11-26_gatorphone
+tools/.venv/bin/python tools/sync.py serial --only 2026-11-26_gatorphone   # over the USB cable, ~75 s
+```
+
+`sync.py serial` writes files to the card **inside the device** over the USB cable (PUT/CRC serial commands, CRC-checked, unchanged files skipped), so the card never has to come out. The device restarts at the end and boots the newest pack. The clock starts at launch evening (Nov 19, 18:30) and runs at GTA V's game speed: 1 game minute every 2 real seconds.
+
+Apps: Phone, Txtz, Clout, Pics (dock); News, VI Facts, Humid, Hailr, Grub, Moola, Condos, Sweat, Radio, Maps, Wanted, Settings. The second home page has widgets (fact of the day, weather, wanted level). Ride and food orders play out as timed sequences.
+
 ## 6. Development
 
 ```bash

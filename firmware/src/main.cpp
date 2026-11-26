@@ -9,6 +9,7 @@
 //   INFO | SHOT | TAP x y | HOLD x y ms | SWIPE x1 y1 x2 y2 ms | SCREEN app/screen
 //   SNAP id | BACK | HOME | MENU | SKIP (leave test/calibration) | REBOOT
 //   ORIENT n (display orientation preset, clears calibration) | RECAL
+//   PUT path size crc | CRC path | RMTREE path | BAUD n  (file transfer, see tools/sync.py serial)
 #include <Arduino.h>
 #include <Preferences.h>
 #include <SD.h>
@@ -18,6 +19,7 @@
 #include <algorithm>
 #include <cmath>
 #include <deque>
+#include <vector>
 
 #include "hal/board.h"
 #include "hal/display.h"
@@ -453,7 +455,135 @@ void queueTap(int x, int y, uint32_t ms = 80) {
     g_inject.push_back({false, (int16_t)x, (int16_t)y, 60});
 }
 
+// ---------------------------------------------------------------- file transfer over serial
+// PUT <path> <size> <crc32hex>: the device answers READY, then the host sends the
+// file in chunks of at most kChunk bytes and waits for "A <total>" after each.
+// The data goes to <path>.part and is renamed after the CRC matches.
+// CRC <path>: "CRC <size> <crc32hex>" (or "CRC -1 0" if missing), to skip unchanged files.
+// RMTREE <path>: delete a file or a directory tree. BAUD <n>: switch the serial speed.
+
+constexpr size_t kChunk = 2048;
+
+uint32_t crc32Update(uint32_t crc, const uint8_t* p, size_t n) {
+    static uint32_t table[256];
+    static bool init = false;
+    if (!init) {
+        for (uint32_t i = 0; i < 256; ++i) {
+            uint32_t c = i;
+            for (int k = 0; k < 8; ++k) c = c & 1 ? 0xEDB88320u ^ (c >> 1) : c >> 1;
+            table[i] = c;
+        }
+        init = true;
+    }
+    crc = ~crc;
+    while (n--) crc = table[(crc ^ *p++) & 0xFF] ^ (crc >> 8);
+    return ~crc;
+}
+
+void makeParents(const String& path) {
+    for (int i = 1; i < (int)path.length(); ++i)
+        if (path[i] == '/') {
+            String d = path.substring(0, i);
+            if (!SD.exists(d)) SD.mkdir(d);
+        }
+}
+
+bool removeTree(const String& path) {
+    File f = SD.open(path);
+    if (!f) return false;
+    if (!f.isDirectory()) {
+        f.close();
+        return SD.remove(path);
+    }
+    std::vector<String> kids;
+    for (File k = f.openNextFile(); k; k = f.openNextFile()) {
+        kids.push_back(path + "/" + String(k.name()).substring(String(k.name()).lastIndexOf('/') + 1));
+        k.close();
+    }
+    f.close();
+    for (auto& k : kids) removeTree(k);
+    return SD.rmdir(path);
+}
+
+void cmdPut(const String& args) {
+    int a = args.indexOf(' '), b = args.indexOf(' ', a + 1);
+    if (a < 0 || b < 0 || !hal::sdMounted()) {
+        Serial.println("ERR usage: PUT <path> <size> <crc32hex> (SD must be mounted)");
+        return;
+    }
+    String path = args.substring(0, a);
+    size_t size = strtoul(args.substring(a + 1, b).c_str(), nullptr, 10);
+    uint32_t want = strtoul(args.substring(b + 1).c_str(), nullptr, 16);
+    makeParents(path);
+    String tmp = path + ".part";
+    File f = SD.open(tmp, FILE_WRITE);
+    if (!f) {
+        Serial.println("ERR cannot open " + tmp);
+        return;
+    }
+    static uint8_t buf[kChunk];
+    uint32_t crc = 0;
+    size_t got = 0;
+    Serial.println("READY");
+    while (got < size) {
+        size_t n = std::min(kChunk, size - got), have = 0;
+        uint32_t t0 = millis();
+        while (have < n && millis() - t0 < 5000) {
+            int avail = Serial.available();
+            if (avail > 0) have += Serial.readBytes(buf + have, std::min<size_t>(avail, n - have));
+            else delay(1);
+        }
+        if (have < n) {
+            f.close();
+            SD.remove(tmp);
+            Serial.println("ERR timeout");
+            return;
+        }
+        f.write(buf, n);
+        crc = crc32Update(crc, buf, n);
+        got += n;
+        Serial.printf("A %u\n", (unsigned)got);
+    }
+    f.close();
+    if (crc != want) {
+        SD.remove(tmp);
+        Serial.printf("ERR crc %08lx\n", (unsigned long)crc);
+        return;
+    }
+    if (SD.exists(path)) SD.remove(path);
+    SD.rename(tmp, path);
+    Serial.println("DONE");
+}
+
+void cmdCrc(const String& path) {
+    File f = hal::sdMounted() && SD.exists(path) ? SD.open(path) : File();
+    if (!f || f.isDirectory()) {
+        Serial.println("CRC -1 0");
+        return;
+    }
+    static uint8_t buf[kChunk];
+    uint32_t crc = 0;
+    size_t size = f.size();
+    for (int n; (n = f.read(buf, sizeof buf)) > 0;) crc = crc32Update(crc, buf, n);
+    f.close();
+    Serial.printf("CRC %u %08lx\n", (unsigned)size, (unsigned long)crc);
+}
+
 void handleCommand(String cmd) {
+    if (cmd.startsWith("PUT ")) return cmdPut(cmd.substring(4));
+    if (cmd.startsWith("CRC ")) return cmdCrc(cmd.substring(4));
+    if (cmd.startsWith("RMTREE ")) {
+        Serial.println(removeTree(cmd.substring(7)) ? "OK" : "ERR not found");
+        return;
+    }
+    if (cmd.startsWith("BAUD ")) {
+        uint32_t b = cmd.substring(5).toInt();
+        Serial.printf("OK %lu\n", (unsigned long)b);
+        Serial.flush();
+        delay(50);
+        Serial.updateBaudRate(b);
+        return;
+    }
     cmd.trim();
     if (cmd.isEmpty()) return;
     int a, b, c, dd, e;
@@ -528,7 +658,7 @@ void serialPoll() {
 }  // namespace
 
 void setup() {
-    Serial.setRxBufferSize(512);
+    Serial.setRxBufferSize(4096);
     Serial.begin(115200);
     delay(50);
     Serial.printf("\n[boot] cyd-phone %s build %s %s\n", hal::panelName(), __DATE__, __TIME__);
