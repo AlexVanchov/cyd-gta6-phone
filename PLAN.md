@@ -17,7 +17,7 @@ The owner's requirement is that apps and their content match the game exactly. Y
 4. Record every deviation. Anything that cannot match the game (font substitute, scaled layout, silent video) goes in DEVIATIONS.md with the reason.
 5. Content is data, not code. The firmware is a generic renderer. All app content lives in content packs on the SD card, so content can be updated without reflashing.
 6. Every screen is verified. A screen is done only when its simulator render passes the visual diff against its reference capture.
-7. Game assets stay local. reference/, content/, and sd/ are gitignored. The repository is private and nothing built from game assets is published or distributed.
+7. Game assets stay local. reference/, content/, and sd/ are gitignored. Nothing built from game assets is published or distributed. (The owner made the repository public on 2026-11-27; it holds only code and the original parody pack.)
 8. Radio and audio are out of scope for now. Build only the hooks in section 9.
 
 One run. Execute every phase in section 8 in a single run, without stopping for approval. Where this plan names a default, use it. Where something is unknown, choose the option that changes the game's look least, log it in DEVIATIONS.md, and continue. Stop early only if continuing would break a rule above. Finish with the final report described in section 10.
