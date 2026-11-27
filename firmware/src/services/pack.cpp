@@ -120,7 +120,8 @@ bool Pack::loadScreen(const std::string& screenId, JsonDocument& doc, std::strin
         err = "screen not found: " + screenId;
         return false;
     }
-    DeserializationError e = deserializeJson(doc, text);
+    // Screens nest pages > widgets > children > actions; ArduinoJson's default limit is 10.
+    DeserializationError e = deserializeJson(doc, text, DeserializationOption::NestingLimit(20));
     if (e) {
         err = "screen " + screenId + ": " + e.c_str();
         return false;

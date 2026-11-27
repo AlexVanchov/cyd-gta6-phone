@@ -583,14 +583,19 @@ def home():
         T(x0 + 18, 200, 90, 30, "Feels like soup.\nH: 97°  L: 91°", "t11", "$color.muted"),
     ]))
     p2.append(R(x0 + 124, 134, 108, 104, bg="#1A1426E0", radius=16, action=go("wanted/main", OPEN), pressed={"opa": 160}, children=[
-        T(x0 + 134, 142, 90, 14, "WANTED LEVEL", "b12", "$color.red"),
+        T(x0 + 134, 142, 90, 14, "WANTED", "b12", "$color.red"),
         *stars(x0 + 134, 166, 0, step=17),
         T(x0 + 134, 194, 90, 36, "Zero. For now.\nKeep it that way.", "t11", "$color.muted"),
     ]))
-    els.append({"type": "scroll", "id": "pages", "dir": "x", "snap": "page", "x": 0, "y": 24, "w": W, "h": 220,
-                "children": page1 + p2})
-    els.append(R(108, 246, 6, 6, radius=9999, bg="#FFFFFFDD"))
-    els.append(R(126, 246, 6, 6, radius=9999, bg="#FFFFFF66"))
+    # Page snapping snaps to the scroll's direct children, so each page is one
+    # full-width child (snapping to the icons would only nudge the grid).
+    # Each page carries its own dots, so the bright dot is always the current page.
+    def dots(x0, cur):
+        return [R(x0 + 108 + i * 18, 246, 6, 6, radius=9999, bg="#FFFFFFDD" if i == cur else "#FFFFFF66")
+                for i in range(2)]
+    pages = [R(0, 24, W, 230, children=page1 + dots(0, 0)), R(W, 24, W, 230, children=p2 + dots(W, 1))]
+    els.append({"type": "scroll", "id": "pages", "dir": "x", "snap": "page", "x": 0, "y": 24, "w": W, "h": 230,
+                "children": pages})
     els.append(R(8, 258, 224, 58, bg="#FFFFFF24", radius=20))
     for i, a in enumerate(["phone", "txtz", "clout", "pics"]):
         els.append(icon(a, 22 + i * 54, 265, label=False))

@@ -124,3 +124,5 @@ Firmware changes made along the way:
 - **Lighter text:** a text element is one LVGL label instead of a box plus a label, with vertical alignment done by computed padding. About 25% less RAM per screen.
 - **Read cache:** the SD file driver now has a 4 KB read cache, because LVGL reads images line by line.
 - **Serial file transfer:** PUT, CRC, RMTREE and BAUD commands, used by `tools/sync.py serial`, write packs over the USB cable without taking the card out.
+
+**Follow-up (2026-11-27):** swiping to the second home page did nothing. LVGL's page snap aligns to the scroll's direct children, and those were the 12 icons, so a swipe only nudged the grid. Each home page is now one full-width child. That nests the screen JSON one level deeper than ArduinoJson's default limit of 10, so screens now parse with a nesting limit of 20. Re-flashed and checked on the device: swipe, then a tap on the fact widget, opens VI Facts. README screenshots come from `tools/make_screenshots.py` (simulator renders in docs/screenshots/).

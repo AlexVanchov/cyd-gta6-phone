@@ -15,6 +15,10 @@ schema/      JSON schemas for manifest, screens and timeline
 research/    web research facts (text only, with sources)
 ```
 
+![GatorPhone VI running in the simulator: lock screen, home pages, VI Facts, Sunburn News, Txtz, Hailr, Moola and Humid](docs/screenshots/overview.png)
+
+*The GatorPhone VI parody pack (§5b), rendered at the device's 240×320 by the headless simulator, which runs the same UI code as the firmware.*
+
 ## 1. Flash the firmware
 
 Two builds exist because the CYD ships with two panels:
@@ -112,6 +116,23 @@ tools/.venv/bin/python tools/sync.py serial --only 2026-11-26_gatorphone   # ove
 `sync.py serial` writes files to the card **inside the device** over the USB cable (PUT/CRC serial commands, CRC-checked, unchanged files skipped), so the card never has to come out. The device restarts at the end and boots the newest pack. The clock starts at launch evening (Nov 19, 18:30) and runs at GTA V's game speed: 1 game minute every 2 real seconds.
 
 Apps: Phone, Txtz, Clout, Pics (dock); News, VI Facts, Humid, Hailr, Grub, Moola, Condos, Sweat, Radio, Maps, Wanted, Settings. The second home page has widgets (fact of the day, weather, wanted level). Ride and food orders play out as timed sequences.
+
+### Screenshots
+
+<table>
+<tr><td align="center"><img src="docs/screenshots/lock.png" width="180" alt="Lock screen"><br><sub>Lock screen</sub></td><td align="center"><img src="docs/screenshots/home.png" width="180" alt="Home"><br><sub>Home</sub></td><td align="center"><img src="docs/screenshots/home_widgets.png" width="180" alt="Home, page 2 (widgets)"><br><sub>Home, page 2 (widgets)</sub></td><td align="center"><img src="docs/screenshots/phone_main.png" width="180" alt="Phone: contacts"><br><sub>Phone: contacts</sub></td></tr>
+<tr><td align="center"><img src="docs/screenshots/phone_call_mom.png" width="180" alt="Phone: calling Mom"><br><sub>Phone: calling Mom</sub></td><td align="center"><img src="docs/screenshots/txtz_mom.png" width="180" alt="Txtz: Mom"><br><sub>Txtz: Mom</sub></td><td align="center"><img src="docs/screenshots/clout_main.png" width="180" alt="Clout feed (video post)"><br><sub>Clout feed (video post)</sub></td><td align="center"><img src="docs/screenshots/pics_main.png" width="180" alt="Pics"><br><sub>Pics</sub></td></tr>
+<tr><td align="center"><img src="docs/screenshots/news_main.png" width="180" alt="Sunburn News"><br><sub>Sunburn News</sub></td><td align="center"><img src="docs/screenshots/news_gator5g.png" width="180" alt="News article"><br><sub>News article</sub></td><td align="center"><img src="docs/screenshots/facts_main.png" width="180" alt="VI Facts"><br><sub>VI Facts</sub></td><td align="center"><img src="docs/screenshots/facts_delays.png" width="180" alt="A VI fact, with source"><br><sub>A VI fact, with source</sub></td></tr>
+<tr><td align="center"><img src="docs/screenshots/hailr_main.png" width="180" alt="Hailr: where to?"><br><sub>Hailr: where to?</sub></td><td align="center"><img src="docs/screenshots/hailr_arriving.png" width="180" alt="Hailr: ride on the way"><br><sub>Hailr: ride on the way</sub></td><td align="center"><img src="docs/screenshots/grub_main.png" width="180" alt="Grub"><br><sub>Grub</sub></td><td align="center"><img src="docs/screenshots/moola_main.png" width="180" alt="Moola"><br><sub>Moola</sub></td></tr>
+<tr><td align="center"><img src="docs/screenshots/humid_main.png" width="180" alt="Humid weather"><br><sub>Humid weather</sub></td><td align="center"><img src="docs/screenshots/condos_main.png" width="180" alt="Condo King"><br><sub>Condo King</sub></td><td align="center"><img src="docs/screenshots/maps_main.png" width="180" alt="Swamp Maps"><br><sub>Swamp Maps</sub></td><td align="center"><img src="docs/screenshots/radio_main.png" width="180" alt="Radio"><br><sub>Radio</sub></td></tr>
+<tr><td align="center"><img src="docs/screenshots/wanted_main.png" width="180" alt="Wanted"><br><sub>Wanted</sub></td><td align="center"><img src="docs/screenshots/settings_about.png" width="180" alt="Settings: About"><br><sub>Settings: About</sub></td></tr>
+</table>
+
+These are simulator renders of the pack. On the device the same screens are drawn by the same code (16-bit colour, so gradients band slightly). To regenerate them after changing the pack:
+
+```bash
+make -C simulator && tools/.venv/bin/python tools/make_screenshots.py   # -> docs/screenshots/
+```
 
 ## 6. Development
 
